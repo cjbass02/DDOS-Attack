@@ -1,44 +1,86 @@
 import socket
 import threading
-import time
+import sys
 
 DISTRIBUTOR_ADDRESS = ('127.0.0.1', 5000)
+BLACKLIST_MESSAGE = "BLACKLISTED: Your IP has exceeded the connection attempt limit."
 
-def simulate_client(client_id):
-    """
-    This function simulates a single client attempting to connect to the distributor.
-    Each client receives server information and then closes the connection.
-    """
-    try:
-        # Create and configure a new socket for this client connection
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as dist_socket:
-            dist_socket.settimeout(5)  # set a timeout to prevent hanging
-            dist_socket.connect(DISTRIBUTOR_ADDRESS)
-            
-            # Receive the server assignment (expected in "host:port" format)
-            server_info = dist_socket.recv(1024).decode().strip()
-            print(f"[Client {client_id}] Received server info: {server_info}")
-    except Exception as e:
-        print(f"[Client {client_id}] Connection failed: {e}")
+def chat_session(server_socket):
+    print("[Client] Connected to messaging server. You can start chatting. Type 'exit' to disconnect.")
+    
+    stop_event = threading.Event()
+
+    def receive_messages():
+        while not stop_event.is_set():
+            try:
+                data = server_socket.recv(1024)
+                if not data:
+                    print("\n[Client] Server disconnected.")
+                    stop_event.set()
+                    break
+                print(f"\nServer: {data.decode().strip()}\nYou: ", end='', flush=True)
+            except Exception as e:
+                print(f"\n[Client] Error receiving message: {e}")
+                stop_event.set()
+                break
+
+    def send_messages():
+        while not stop_event.is_set():
+            try:
+                msg = input("You: ")
+                if msg.lower() == "exit":
+                    stop_event.set()
+                    break
+                server_socket.sendall(msg.encode())
+            except Exception as e:
+                print(f"[Client] Error sending message: {e}")
+                stop_event.set()
+                break
+
+    recv_thread = threading.Thread(target=receive_messages, daemon=True)
+    send_thread = threading.Thread(target=send_messages, daemon=True)
+    recv_thread.start()
+    send_thread.start()
+
+    recv_thread.join()
+    send_thread.join()
+    server_socket.close()
+    print("[Client] Chat session ended.")
 
 def main():
-    """
-    In the main loop, a new client thread is spawned every second.
-    This loop simulates a low-intensity DDoS attack where each client individually connects to the distributor.
-    """
-    client_id = 0
-    while True:
-        client_id += 1
-        # Start a new thread representing a new client connection
-        t = threading.Thread(target=simulate_client, args=(client_id,))
-        t.daemon = True  # Allow threads to be cleaned up on program exit
-        t.start()
-        # Wait one second before spawning the next client
-        time.sleep(1)
+    # Contact the distributor to obtain server assignment.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as dist_socket:
+            dist_socket.settimeout(5)
+            dist_socket.connect(DISTRIBUTOR_ADDRESS)
+            response = dist_socket.recv(1024).decode().strip()
+    except Exception as e:
+        print(f"[Client] Failed to connect to the distributor: {e}")
+        sys.exit(1)
+
+    if response.startswith("BLACKLISTED"):
+        print(f"[Client] {response}")
+        sys.exit(0)
+
+    # Parse the server info (format: "host:port").
+    try:
+        host, port_str = response.split(":")
+        server_port = int(port_str)
+    except Exception as e:
+        print(f"[Client] Invalid server info received: {response}")
+        sys.exit(1)
+
+    print(f"[Client] Assigned to messaging server at {host}:{server_port}")
+
+    # Connect to the assigned messaging server.
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.connect((host, server_port))
+    except Exception as e:
+        print(f"[Client] Failed to connect to messaging server: {e}")
+        sys.exit(1)
+
+    chat_session(server_socket)
 
 if __name__ == "__main__":
-    try:
-        print("Starting DDoS simulation of distributor connection. Press Ctrl+C to stop.")
-        main()
-    except KeyboardInterrupt:
-        print("DDoS simulation stopped.")
+    main()

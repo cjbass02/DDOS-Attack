@@ -1,60 +1,53 @@
 import socket
 import threading
 
-# List of available servers (all assumed to be on localhost, ports 5001–5010)
+# List of available messaging servers.
+# These servers should be launched separately (for example, in different terminals).
 servers = [
     ("127.0.0.1", 5001),
     ("127.0.0.1", 5002),
-    ("127.0.0.1", 5003),
-    ("127.0.0.1", 5004),
-    ("127.0.0.1", 5005),
-    ("127.0.0.1", 5006),
-    ("127.0.0.1", 5007),
-    ("127.0.0.1", 5008),
-    ("127.0.0.1", 5009),
-    ("127.0.0.1", 5010)
+    ("127.0.0.1", 5003)
 ]
 
-server_index = 0  # To implement round-robin assignment
+server_index = 0  # for round-robin assignment
 
-# Dictionary to track connection attempts by IP
+# Dictionary to track connection attempts per client IP.
 connection_attempts = {}
 attempt_lock = threading.Lock()
 
-# Threshold for blacklisting
-BLACKLIST_THRESHOLD = 10
+MAX_ATTEMPTS = 3
+BLACKLIST_MESSAGE = "BLACKLISTED: Your IP has exceeded the connection attempt limit."
 
 def handle_client(conn, addr):
-    global server_index, connection_attempts
+    global server_index
     client_ip = addr[0]
     
-    # Update connection attempt count safely
+    # Update connection attempt count safely.
     with attempt_lock:
         count = connection_attempts.get(client_ip, 0) + 1
         connection_attempts[client_ip] = count
-    print(f"[Distributor] Connection from {client_ip}. Attempt count: {count}")
+    print(f"[Distributor] {client_ip} connection attempt #{count}")
 
-    # If the client has reached the threshold, block the connection
-    if count >= BLACKLIST_THRESHOLD:
-        print(f"[Distributor] Blocking connection from {client_ip} after {count} attempts.")
+    # If the count exceeds the threshold, send the blacklist message.
+    if count > MAX_ATTEMPTS:
+        print(f"[Distributor] {client_ip} is blacklisted.")
         try:
-            conn.sendall("Your IP has been blacklisted due to excessive connection attempts.".encode())
+            conn.sendall(BLACKLIST_MESSAGE.encode())
         except Exception as e:
-            print(f"[Distributor] Error sending block notification to {client_ip}: {e}")
+            print(f"[Distributor] Error sending blacklist message: {e}")
         finally:
             conn.close()
         return
 
-    # For allowed IPs, do a round-robin assignment to one of the servers
+    # Otherwise, assign a server using round-robin.
     assigned_server = servers[server_index % len(servers)]
     server_index += 1
-
     server_info = f"{assigned_server[0]}:{assigned_server[1]}"
     try:
         conn.sendall(server_info.encode())
-        print(f"[Distributor] Assigned {server_info} to client {client_ip}")
+        print(f"[Distributor] Assigned server {server_info} to {client_ip}")
     except Exception as e:
-        print(f"[Distributor] Failed to send server info to {client_ip}: {e}")
+        print(f"[Distributor] Error sending server info: {e}")
     finally:
         conn.close()
 
@@ -70,10 +63,12 @@ def main():
     print("[Distributor] Listening on port 5000...")
 
     while True:
-        conn, addr = distributor_socket.accept()
-        client_thread = threading.Thread(target=handle_client, args=(conn, addr))
-        client_thread.daemon = True
-        client_thread.start()
+        try:
+            conn, addr = distributor_socket.accept()
+            thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"[Distributor] Error accepting connections: {e}")
 
 if __name__ == "__main__":
     main()
