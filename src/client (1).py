@@ -2,7 +2,7 @@ import socket
 import threading
 import sys
 
-DISTRIBUTOR_ADDRESS = ('127.0.0.1', 5000)
+DISTRIBUTOR_ADDRESS = ('192.168.40.196', 5000)
 BLACKLIST_MESSAGE = "BLACKLISTED: Your IP has exceeded the connection attempt limit."
 
 def chat_session(server_socket):

@@ -31,10 +31,11 @@ def chat_session(conn, addr):
 
     def send_messages():
         # Use non-blocking input to allow periodic check of stop_event.
-        while not stop_event.is_set():
-            print("You: ", end='', flush=True)
+        
+        while not stop_event.is_set():         
             ready, _, _ = select.select([sys.stdin], [], [], 1)
             if ready:
+                print("You: ", end='', flush=True)
                 msg = sys.stdin.readline().rstrip('\n')
                 if msg.lower() == "exit":
                     # Optionally send the exit message to client.
