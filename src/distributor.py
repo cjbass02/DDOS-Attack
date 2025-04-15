@@ -4,9 +4,9 @@ import threading
 # List of available messaging servers.
 # These servers should be launched separately (for example, in different terminals).
 servers = [
-    ("127.0.0.1", 5001),
-    ("127.0.0.1", 5002),
-    ("127.0.0.1", 5003)
+    ("192.168.40.151", 5001),
+    ("192.168.40.151", 5002),
+    ("192.168.40.151", 5003)
 ]
 
 server_index = 0  # for round-robin assignment

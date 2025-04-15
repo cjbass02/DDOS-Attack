@@ -1,11 +1,12 @@
 import socket
 import threading
 import sys
+import select
 
 def chat_session(conn, addr):
     print(f"[Server] Client {addr} connected. Starting chat session.")
     
-    # Event used to signal when the chat session should stop.
+    # A flag to indicate when the chat session should stop.
     stop_event = threading.Event()
 
     def receive_messages():
@@ -13,36 +14,49 @@ def chat_session(conn, addr):
             try:
                 data = conn.recv(1024)
                 if not data:
-                    print("[Server] Client disconnected.")
+                    print("\n[Server] Client disconnected.")
                     stop_event.set()
                     break
-                print(f"\nClient: {data.decode().strip()}\nYou: ", end='', flush=True)
+                message = data.decode().strip()
+                if message.lower() == "exit":
+                    print("\n[Server] Client sent 'exit'. Ending chat session.")
+                    stop_event.set()
+                    break
+                # Print the client's message and show a prompt.
+                print(f"\nClient: {message}\nYou: ", end='', flush=True)
             except Exception as e:
-                print(f"[Server] Error receiving message: {e}")
+                print(f"\n[Server] Error receiving message: {e}")
                 stop_event.set()
                 break
 
     def send_messages():
+        # Use non-blocking input to allow periodic check of stop_event.
         while not stop_event.is_set():
-            try:
-                # Read input from the server operator.
-                msg = input("You: ")
+            print("You: ", end='', flush=True)
+            ready, _, _ = select.select([sys.stdin], [], [], 1)
+            if ready:
+                msg = sys.stdin.readline().rstrip('\n')
                 if msg.lower() == "exit":
+                    # Optionally send the exit message to client.
+                    try:
+                        conn.sendall(msg.encode())
+                    except Exception as e:
+                        print(f"[Server] Error sending exit message: {e}")
                     stop_event.set()
                     break
-                conn.sendall(msg.encode())
-            except Exception as e:
-                print(f"[Server] Error sending message: {e}")
-                stop_event.set()
-                break
+                try:
+                    conn.sendall(msg.encode())
+                except Exception as e:
+                    print(f"[Server] Error sending message: {e}")
+                    stop_event.set()
+                    break
 
-    # Create threads for sending and receiving messages.
     recv_thread = threading.Thread(target=receive_messages, daemon=True)
     send_thread = threading.Thread(target=send_messages, daemon=True)
     recv_thread.start()
     send_thread.start()
 
-    # Wait for both threads to finish before closing the connection.
+    # Wait for both threads to finish.
     recv_thread.join()
     send_thread.join()
     conn.close()
@@ -52,7 +66,6 @@ def main():
     if len(sys.argv) != 2:
         print("Usage: python server.py <port>")
         sys.exit(1)
-    
     try:
         port = int(sys.argv[1])
     except ValueError:
