@@ -1,19 +1,55 @@
 import socket
 import threading
 
-# This function will distribute the connections to different servers (simulating a load balancer)
-def distribute_requests(server_ips):
-    """Distributes requests from clients to multiple servers."""
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# List of available servers (assuming all are on localhost and using ports 5001–5010)
+servers = [
+    ("127.0.0.1", 5001),
+    ("127.0.0.1", 5002),
+    ("127.0.0.1", 5003),
+    ("127.0.0.1", 5004),
+    ("127.0.0.1", 5005),
+    ("127.0.0.1", 5006),
+    ("127.0.0.1", 5007),
+    ("127.0.0.1", 5008),
+    ("127.0.0.1", 5009),
+    ("127.0.0.1", 5010)
+]
+
+server_index = 0  # To implement round-robin assignment
+
+def handle_client(conn, addr):
+    global server_index
+    print(f"[Distributor] Received connection from {addr}")
+    
+    # Round-robin: assign the next server in the list
+    assigned_server = servers[server_index % len(servers)]
+    server_index += 1
+
+    # Format the assigned server's info as "host:port"
+    server_info = f"{assigned_server[0]}:{assigned_server[1]}"
+    try:
+        conn.sendall(server_info.encode())
+        print(f"[Distributor] Assigned {server_info} to client {addr}")
+    except Exception as e:
+        print(f"[Distributor] Failed to send server info to {addr}: {e}")
+    finally:
+        conn.close()
+
+def main():
+    distributor_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        distributor_socket.bind(('0.0.0.0', 5000))
+    except Exception as e:
+        print(f"[Distributor] Failed to bind on port 5000: {e}")
+        return
+    distributor_socket.listen(5)
+    print("[Distributor] Listening on port 5000...")
     
     while True:
-        for ip in server_ips:
-            try:
-                client_socket.connect((ip, 8080))
-                print(f"Request sent to server {ip}")
-            except Exception as e:
-                print(f"Failed to connect to server {ip}: {e}")
+        conn, addr = distributor_socket.accept()
+        client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+        client_thread.daemon = True
+        client_thread.start()
 
 if __name__ == "__main__":
-    servers = ["127.0.0.1", "192.168.1.2"]  # Replace with actual server IPs
-    distribute_requests(servers)
+    main()

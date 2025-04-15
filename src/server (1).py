@@ -1,36 +1,42 @@
 import socket
 import threading
 
-# Maximum number of allowed connections
-MAX_CONNECTIONS = 5
-BLOCKED_IPS = set()
-
-def handle_client(client_socket, addr):
-    """Handles the incoming client request."""
-    print(f"Connection from {addr}")
-    # Simulate some work or interaction with the client
-    client_socket.send("Welcome to the server!".encode())
-    client_socket.close()
-
-def server_program():
-    """Sets up the server and listens for incoming connections."""
+def server_thread(port):
+    """Starts a server that listens on the given port, sends a greeting, and then closes the connection."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(("0.0.0.0", 8080))
-    server_socket.listen(MAX_CONNECTIONS)
-
-    print("Server listening on port 8080...")
-
+    try:
+        server_socket.bind(('0.0.0.0', port))
+    except Exception as e:
+        print(f"Failed to bind server on port {port}: {e}")
+        return
+    server_socket.listen(5)
+    print(f"[Server] Listening on port {port}...")
+    
     while True:
-        client_socket, addr = server_socket.accept()
-
-        if addr[0] in BLOCKED_IPS:
-            print(f"Blocked IP attempted to connect: {addr}")
-            client_socket.close()
-            continue
-        
-        # Create a thread to handle the client
-        client_thread = threading.Thread(target=handle_client, args=(client_socket, addr))
-        client_thread.start()
+        client, addr = server_socket.accept()
+        print(f"[Server on {port}] Connection from {addr}")
+        try:
+            # Send a simple greeting to the client
+            message = f"Hello from server on port {port}!"
+            client.sendall(message.encode())
+        except Exception as e:
+            print(f"[Server on {port}] Error sending data: {e}")
+        finally:
+            client.close()
 
 if __name__ == "__main__":
-    server_program()
+    # Launch 10 servers on ports 5001 to 5010
+    ports = range(5001, 5011)
+    threads = []
+    for port in ports:
+        t = threading.Thread(target=server_thread, args=(port,))
+        t.daemon = True  # Make threads exit when the main program does
+        t.start()
+        threads.append(t)
+    
+    print("[Server] All servers are running. Press Ctrl+C to exit.")
+    try:
+        while True:
+            pass
+    except KeyboardInterrupt:
+        print("\n[Server] Shutting down.")
